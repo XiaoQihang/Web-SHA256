@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+
+  <body>
+    <input type="file" multiple />
+    <p>进度和结果请看控制台。</p>
+    <script>
+      // 文件获取
+      const fileChange = (e) => {
+        let files = [];
+        let workerMap, worker;
+        let file = e.target.files[0];
+        if (!Array.isArray(file)) {
+          files.push(file);
+        } else {
+          files = file;
+        }
+        // 支持上传多文件
+        for (i = 0; i < files.length; i++) {
+          let currentFile = files[i];
+          workerMap = [];
+          // 开启多线程
+          worker = new Worker("hash.js");
+          // 监听worker消息
+          worker.addEventListener("message", handleWorkerEvent(currentFile));
+          workerMap.push(worker);
+          //执行计算
+          hashFile(currentFile, workerMap);
+        }
+      };
+      // 用于进度
+      const handleWorkerEvent = (item) => {
+        return (event) => {
+          if (event.data.result) {
+            this.fileDigestResult = event.data.result;
+            console.log("计算结果为---------------:" + this.fileDigestResult);
+          } else {
+            console.log(
+              "当前进度-----:",
+              (
+                (event.data.block.end * 100) /
+                event.data.block.file_size
+              ).toFixed(2) + "%"
+            );
+          }
+        };
+      };
+      // 操作文件
+      const hashFile = (file, workers) => {
+        let block, // 文件总块
+          threads, //线程数量
+          reader, // 读取文件类
+          blob; // 当前分块
+        let bufferSize = 10 * 1024; // 块大小默认 10KB
+        block = {
+          file_size: file.size,
+          start: 0,
+        };
+        block.end = bufferSize > file.size ? file.size : bufferSize; // 源文件大小和块的单位大小对比 取小者
+        threads = 0; // 线程数
+        //
+        const handleLoadBlock = (event) => {
+          for (i = 0; i < workers.length; i += 1) {
+            threads += 1;
+            workers[i].postMessage({
+              message: event.target.result,
+              block: block,
+            });
+          }
+        };
+        // 继续文件分块
+        const handleHashBlock = () => {
+          threads -= 1;
+          if (threads === 0) {
+            if (block.end !== file.size) {
+              block.start += bufferSize;
+              block.end += bufferSize;
+              if (block.end > file.size) {
+                block.end = file.size;
+              }
+              reader = new FileReader();
+              reader.onload = handleLoadBlock;
+              blob = file.slice(block.start, block.end);
+              reader.readAsArrayBuffer(blob);
+            }
+          }
+        };
+
+        for (let i = 0; i < workers.length; i += 1) {
+          workers[i].addEventListener("message", handleHashBlock);
+        }
+        reader = new FileReader();
+        // 文件分块
+        blob = file.slice(block.start, block.end);
+        reader.readAsArrayBuffer(blob);
+        reader.onload = handleLoadBlock;
+      };
+
+      let input = document.querySelector("input");
+      input.addEventListener("change", fileChange);
+    </script>
+  </body>
+</html>
