@@ -3,5 +3,4 @@
 
 ## 命令
 - npm i anywhere -g
-## 项目目录下
 - anywhere
